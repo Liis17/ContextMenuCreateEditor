@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36203.30
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ContextMenuCreateEditor.WPF", "ContextMenuCreateEditor.WPF\ContextMenuCreateEditor.WPF.csproj", "{CA922EA0-78B8-403C-9A81-3C92A1A83B5B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CA922EA0-78B8-403C-9A81-3C92A1A83B5B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA922EA0-78B8-403C-9A81-3C92A1A83B5B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA922EA0-78B8-403C-9A81-3C92A1A83B5B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA922EA0-78B8-403C-9A81-3C92A1A83B5B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C9594644-58A1-4214-BBAF-E8CF9D6C84C5}
+	EndGlobalSection
+EndGlobal
