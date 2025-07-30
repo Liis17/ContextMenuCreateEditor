@@ -92,8 +92,9 @@
             <!--  Кнопка "Удалить" (скрыта по умолчанию)  -->
             <Button
                 x:Name="DeleteButton"
-                Grid.Column="2"
-                Margin="10,0"
+                Grid.Column="1"
+                HorizontalAlignment="Stretch"
+                Margin="0,5"
                 Click="DeleteButton_Click"
                 Content="Удалить"
                 Style="{StaticResource DeleteButtonStyle}"
