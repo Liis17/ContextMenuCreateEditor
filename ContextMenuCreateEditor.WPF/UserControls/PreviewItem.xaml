@@ -5,46 +5,99 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="clr-namespace:ContextMenuCreateEditor.WPF.UserControls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:sys="clr-namespace:System.Windows;assembly=PresentationCore"
     Margin="4"
-    Padding="12,7,12,7"
-    d:DesignHeight="450"
-    d:DesignWidth="800"
+    Padding="2,4,2,4"
+    d:DesignHeight="80"
+    d:DesignWidth="300"
     mc:Ignorable="d">
-    <Grid>
-        <Border
-            Margin="-15,-10,-15,-10"
-            Background="#252525"
-            CornerRadius="15" />
+    <UserControl.Resources>
+        <!--  Стиль для кнопки удаления  -->
+        <Style x:Key="DeleteButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF4D4D" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border
+                            Padding="{TemplateBinding Padding}"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Border
+        x:Name="MainBorder"
+        Padding="4,2,15,2"
+        CornerRadius="7"
+        MouseEnter="MainBorder_MouseEnter"
+        MouseLeave="MainBorder_MouseLeave">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Offset="0" Color="#252525" />
+                <GradientStop Offset="1" Color="#333333" />
+            </LinearGradientBrush>
+        </Border.Background>
+        <Border.Effect>
+            <DropShadowEffect
+                BlurRadius="5"
+                Opacity="0.5"
+                ShadowDepth="2"
+                Color="Black" />
+        </Border.Effect>
+
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="50" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Grid Grid.Column="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+
+            <!--  Иконка  -->
+            <Image
+                x:Name="IconItem"
+                Grid.Column="0"
+                Width="40"
+                Height="40"
+                Margin="5"
+                Stretch="Uniform" />
+
+            <!--  Текст: Заголовок и формат  -->
+            <StackPanel
+                Grid.Column="1"
+                Margin="10,0,0,0"
+                VerticalAlignment="Center">
                 <TextBlock
                     x:Name="TitleTextBlock"
-                    Grid.Column="1"
-                    Margin="5,0,0,0"
+                    FontSize="14"
+                    FontWeight="Bold"
                     Foreground="White"
                     Text="Заголовок" />
                 <TextBlock
                     x:Name="FormatTextBlock"
-                    Grid.Row="1"
-                    Grid.Column="2"
-                    Margin="5,0,0,0"
-                    Foreground="White"
-                    Text="формат" />
-            </Grid>
+                    FontSize="12"
+                    Foreground="#CCCCCC"
+                    Text="Формат" />
+            </StackPanel>
 
-            <Image x:Name="IconItem" Margin="3" />
-
+            <!--  Кнопка "Удалить" (скрыта по умолчанию)  -->
+            <Button
+                x:Name="DeleteButton"
+                Grid.Column="2"
+                Margin="10,0"
+                Click="DeleteButton_Click"
+                Content="Удалить"
+                Style="{StaticResource DeleteButtonStyle}"
+                Visibility="Collapsed" />
         </Grid>
-
-
-
-    </Grid>
+    </Border>
 </UserControl>

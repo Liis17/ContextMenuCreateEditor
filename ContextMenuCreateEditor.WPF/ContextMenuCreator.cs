@@ -44,5 +44,73 @@ namespace ContextMenuCreateEditor.WPF
 
             Console.WriteLine($"Пункт 'Создать -> {displayName}' добавлен в контекстное меню.");
         }
+
+        public static void RemoveFromNewMenu(string displayName, string fileExtension)
+        {
+            if (string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(fileExtension))
+                throw new ArgumentException("Название или расширение файла не могут быть пустыми.");
+
+            if (!fileExtension.StartsWith("."))
+                fileExtension = "." + fileExtension;
+
+            try
+            {
+                // 1. Проверяем ключ HKEY_CLASSES_ROOT\.ext
+                using (RegistryKey extKey = Registry.ClassesRoot.OpenSubKey(fileExtension, writable: true))
+                {
+                    if (extKey == null)
+                        throw new Exception($"Ключ для расширения {fileExtension} не найден.");
+
+                    string className = extKey.GetValue("") as string;
+                    if (string.IsNullOrEmpty(className))
+                        throw new Exception($"Класс для {fileExtension} не определён.");
+
+                    // 2. Удаляем HKEY_CLASSES_ROOT\.ext\ShellNew
+                    try
+                    {
+                        Registry.ClassesRoot.DeleteSubKeyTree(fileExtension + @"\ShellNew");
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"Не удалось удалить ключ ShellNew для {fileExtension}: {ex.Message}");
+                    }
+
+                    // 3. Проверяем, используется ли className другими расширениями
+                    bool isClassUsed = false;
+                    foreach (var keyName in Registry.ClassesRoot.GetSubKeyNames())
+                    {
+                        if (keyName == fileExtension) continue;
+                        using (RegistryKey otherKey = Registry.ClassesRoot.OpenSubKey(keyName))
+                        {
+                            if (otherKey?.GetValue("") as string == className)
+                            {
+                                isClassUsed = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // 4. Если класс не используется, удаляем его
+                    if (!isClassUsed)
+                    {
+                        try
+                        {
+                            Registry.ClassesRoot.DeleteSubKeyTree(className);
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new Exception($"Не удалось удалить ключ класса {className}: {ex.Message}");
+                        }
+                    }
+                }
+
+                Console.WriteLine($"Пункт 'Создать -> {displayName}' удалён из контекстного меню.");
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Ошибка при удалении пункта меню: {ex.Message}", ex);
+            }
+        }
     }
+
 }
