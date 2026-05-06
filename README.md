@@ -21,30 +21,6 @@ WPF + .NET 10 (Windows), [WPF-UI](https://github.com/lepoco/wpfui) для Fluent
 
 ---
 
-## Сборка
-
-Требуется .NET 10 SDK (на момент написания — preview).
-
-```powershell
-git clone <repo>
-cd ContextMenuCreateEditor
-dotnet build ContextMenuCreateEditor.sln
-```
-
-Запуск отладочной сборки:
-
-```powershell
-dotnet run --project ContextMenuCreateEditor.WPF
-```
-
-Или собранный `.exe`:
-
-```
-ContextMenuCreateEditor.WPF\bin\Debug\net10.0-windows\ContextMenuCreateEditor.WPF.exe
-```
-
----
-
 ## Использование
 
 ### Добавление обычного пункта (с расширением)
@@ -88,37 +64,6 @@ ContextMenuCreateEditor.WPF\bin\Debug\net10.0-windows\ContextMenuCreateEditor.WP
 
 ---
 
-## Архитектура
-
-```
-ContextMenuCreateEditor.WPF/
-├── App.xaml(.cs)              Bootstrap, DI вручную, обработчики ошибок, CLI --create
-├── MainWindow.xaml(.cs)       Главное окно (DataContext = MainViewModel)
-├── Models/
-│   └── ShellNewItem.cs
-├── Services/
-│   ├── HkcuRegistryService    HKCU\Software\Classes — чтение/запись ShellNew
-│   ├── TemplateStorage        Шаблоны в %LOCALAPPDATA%\…\Templates\
-│   ├── IconService            SHGetFileInfo + SHGetStockIconInfo (с try/finally)
-│   ├── ExplorerRefresher      SHChangeNotify + taskkill/start explorer.exe
-│   ├── RegistryBackupService  reg.exe export
-│   ├── FileCreator            CLI-обработчик для Command-режима
-│   └── AppLogger              Простой файловый лог
-├── ViewModels/
-│   ├── MainViewModel          ObservableCollection, ICollectionView с фильтром
-│   ├── ItemEditorViewModel
-│   ├── ShellNewItemViewModel
-│   └── RelayCommand
-├── Views/
-│   ├── EditItemDialog         Add / Edit
-│   └── ConflictDialog         Три варианта при конфликте расширения
-└── UserControls/
-    └── PreviewItem            Карточка с двумя icon-only кнопками на hover
-```
-
-Логика — в сервисах, состояние UI — во ViewModel'ях, View — без code-behind за исключением маршалинга событий. View↔VM связаны через DataContext и события (без singleton'ов).
-
----
 
 ## Реестр: что и куда пишется
 
@@ -165,8 +110,3 @@ HKCU\Software\Classes\.<derived>\ShellNew
 - `%LOCALAPPDATA%\ContextMenuCreateEditor\Backups\` — `.reg`-бэкапы.
 - `%LOCALAPPDATA%\ContextMenuCreateEditor\app.log` — лог.
 
----
-
-## Лицензия
-
-Не указана.
