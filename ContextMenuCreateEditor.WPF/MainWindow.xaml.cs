@@ -1,247 +1,239 @@
-﻿using ContextMenuCreateEditor.WPF.UserControls;
-
-using Microsoft.Win32;
-
+using ContextMenuCreateEditor.WPF.Models;
+using ContextMenuCreateEditor.WPF.Services;
+using ContextMenuCreateEditor.WPF.UserControls;
+using ContextMenuCreateEditor.WPF.ViewModels;
+using ContextMenuCreateEditor.WPF.Views;
+using ConflictChoice = ContextMenuCreateEditor.WPF.Views.ConflictChoice;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Security.Principal;
 using System.Threading.Tasks;
 using System.Windows;
-
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
-
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
 
 namespace ContextMenuCreateEditor.WPF
 {
     public partial class MainWindow : FluentWindow
     {
-        public static MainWindow Instance { get; private set; }
-        public MainWindow()
+        private readonly MainViewModel _vm;
+        private readonly IRegistryService _registry;
+        private readonly ITemplateStorage _templates;
+        private readonly IExplorerRefresher _refresher;
+        private readonly IRegistryBackupService _backup;
+
+        public MainWindow(
+            MainViewModel vm,
+            IRegistryService registry,
+            ITemplateStorage templates,
+            IExplorerRefresher refresher,
+            IRegistryBackupService backup)
         {
             InitializeComponent();
-            Instance = this;
             ApplicationThemeManager.Apply(this);
-            Loaded += MainWindow_Loaded;
 
-            // Проверяем, запущено ли приложение с аргументами для реестра
-            HandleCommandLineArgs();
-        }
+            _vm = vm;
+            _registry = registry;
+            _templates = templates;
+            _refresher = refresher;
+            _backup = backup;
 
-        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
-        {
-            Update();
-        }
+            DataContext = _vm;
 
-        private async void Button_Click(object sender, RoutedEventArgs e)
-        {
-            var title = TitleTb.Text?.Trim();
-            var format = FormatTb.Text?.Trim();
+            _vm.OnAddRequested += async () => await ShowAddDialog();
+            _vm.OnEditRequested += async vm => await ShowEditDialog(vm);
+            _vm.OnDeleteRequested += async vm => await DeleteItem(vm);
+            _vm.OnBackupRequested += DoBackup;
+            _vm.OnRestartExplorerRequested += async () => await DoRestartExplorer();
 
-            if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(format))
+            Loaded += async (_, _) =>
             {
-                MessageBox.Show("Пожалуйста, заполните поля 'Название' и 'Формат'.", "Ошибка ввода", MessageBoxButton.OK, MessageBoxImage.Warning);
+                try { await _vm.ReloadAsync(); }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, $"Ошибка загрузки: {ex.Message}", "Ошибка",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            };
+        }
+
+        private async void PreviewItem_EditRequested(object sender, RoutedEventArgs e)
+        {
+            if (sender is PreviewItem pi && pi.DataContext is ShellNewItemViewModel vm)
+                await ShowEditDialog(vm);
+        }
+
+        private async void PreviewItem_DeleteRequested(object sender, RoutedEventArgs e)
+        {
+            if (sender is PreviewItem pi && pi.DataContext is ShellNewItemViewModel vm)
+                await DeleteItem(vm);
+        }
+
+        private async Task ShowAddDialog()
+        {
+            var editorVm = new ItemEditorViewModel(_registry);
+            var dialog = new EditItemDialog(editorVm) { Owner = this };
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                var built = editorVm.BuildResult();
+                string templatePath = string.Empty;
+                if (!string.IsNullOrWhiteSpace(built.Template))
+                    templatePath = _templates.SaveTemplate(built.FileName, built.Extension, built.Template);
+
+                var result = await Task.Run(() => _registry.TryAdd(built.DisplayName, built.FileName, built.Extension, templatePath));
+
+                if (result.Outcome == AddOutcome.Conflict)
+                {
+                    var conflict = new ConflictDialog(built.Extension, result.ExistingProgId ?? "?") { Owner = this };
+                    conflict.ShowDialog();
+                    switch (conflict.Choice)
+                    {
+                        case ConflictChoice.UseExisting:
+                            result = await Task.Run(() => _registry.AddUsingExistingProgId(
+                                built.DisplayName, built.FileName, built.Extension, templatePath, result.ExistingProgId!));
+                            break;
+                        case ConflictChoice.ForceRecreate:
+                            result = await Task.Run(() => _registry.ForceAdd(
+                                built.DisplayName, built.FileName, built.Extension, templatePath));
+                            break;
+                        default:
+                            _templates.DeleteTemplate(templatePath);
+                            return;
+                    }
+                }
+
+                if (result.Item != null)
+                {
+                    _vm.AppendNew(result.Item);
+                    _refresher.RefreshAssociations();
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Ошибка добавления пункта", ex);
+                MessageBox.Show(this, $"Ошибка добавления: {ex.Message}", "Ошибка",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async Task ShowEditDialog(ShellNewItemViewModel itemVm)
+        {
+            if (!itemVm.Model.IsOwn)
+            {
+                MessageBox.Show(this, "Системные пункты редактировать нельзя.", "Запрещено",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            if (!format.StartsWith("."))
-            {
-                format = "." + format;
-            }
+            var editorVm = new ItemEditorViewModel(_registry, itemVm.Model.Clone());
+            var dialog = new EditItemDialog(editorVm) { Owner = this };
+            if (dialog.ShowDialog() != true) return;
 
             try
             {
-                if (IsRunningAsAdmin())
+                var built = editorVm.BuildResult();
+                _templates.DeleteTemplate(itemVm.Model.TemplatePath);
+
+                string templatePath = string.Empty;
+                if (!string.IsNullOrWhiteSpace(built.Template))
+                    templatePath = _templates.SaveTemplate(built.FileName, built.Extension, built.Template);
+
+                built.TemplatePath = templatePath;
+
+                await Task.Run(() => _registry.Update(itemVm.Model, built));
+
+                var fresh = await Task.Run(() => _registry.GetItems());
+                ShellNewItem? updated = null;
+                foreach (var x in fresh)
                 {
-                    // Права есть, выполняем напрямую
-                    ContextMenuCreator.AddToNewMenu(title, format);
-                    Update();
-                }
-                else
-                {
-                    // Запускаем отдельный процесс с правами администратора и ждем завершения
-                    var process = RunElevatedProcess(title, format);
-                    if (process != null)
+                    if (string.Equals(x.Extension, built.Extension, StringComparison.OrdinalIgnoreCase))
                     {
-                        await process.WaitForExitAsync();
-                        if (process.ExitCode == 0)
-                        {
-                            Update(); // Обновляем UI после успешного изменения
-                        }
-                        else
-                        {
-                            MessageBox.Show("Изменение реестра в elevated процессе завершилось с ошибкой.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                        }
+                        updated = x;
+                        break;
                     }
+                }
+                if (updated != null) itemVm.Model = updated;
+
+                _refresher.RefreshAssociations();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Ошибка редактирования", ex);
+                MessageBox.Show(this, $"Ошибка редактирования: {ex.Message}", "Ошибка",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async Task DeleteItem(ShellNewItemViewModel itemVm)
+        {
+            if (!itemVm.Model.IsOwn) return;
+            var answer = MessageBox.Show(this,
+                $"Удалить пункт «{itemVm.DisplayName}» ({itemVm.Extension})?",
+                "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes) return;
+
+            try
+            {
+                _templates.DeleteTemplate(itemVm.Model.TemplatePath);
+                await Task.Run(() => _registry.Remove(itemVm.Model));
+                _vm.RemoveVm(itemVm);
+                _refresher.RefreshAssociations();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Ошибка удаления", ex);
+                MessageBox.Show(this, $"Ошибка удаления: {ex.Message}", "Ошибка",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void DoBackup()
+        {
+            try
+            {
+                var path = _backup.CreateBackup();
+                var answer = MessageBox.Show(this,
+                    $"Резервная копия создана:\n{path}\n\nОткрыть папку с бэкапами?",
+                    "Готово", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                if (answer == MessageBoxResult.Yes)
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        Arguments = $"\"{_backup.BackupsFolder}\"",
+                        UseShellExecute = true
+                    });
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при добавлении элемента: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                AppLogger.Error("Ошибка бэкапа", ex);
+                MessageBox.Show(this, $"Не удалось создать резервную копию: {ex.Message}", "Ошибка",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        public void Update()
+        private async Task DoRestartExplorer()
         {
+            var answer = MessageBox.Show(this,
+                "Перезапустить Проводник? Открытые окна Проводника закроются.",
+                "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes) return;
+
             try
             {
-                var items = ContextMenuReader.GetRegisteredNewItems();
-                PreviewPanel.Children.Clear();
-
-                foreach (var item in items)
-                {
-                    var previewContainer = new PreviewItem(item.DisplayName, item.Extension);
-                    PreviewPanel.Children.Add(previewContainer);
-                }
+                await _refresher.RestartShellAsync();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при обновлении списка: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, $"Ошибка: {ex.Message}", "Ошибка",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
-        private async void ExplorerRestart(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                // Пробуем мягкий перезапуск через WinAPI (SHChangeNotify)
-                try
-                {
-                    SHChangeNotify(0x08000000 /* SHCNE_ASSOCCHANGED */, 0x0000 /* SHCNF_IDLIST */, IntPtr.Zero, IntPtr.Zero);
-                }
-                catch (Exception notifyEx)
-                {
-                    MessageBox.Show($"SHChangeNotify не сработал: {notifyEx.Message}. Выполняем полный перезапуск.", "Предупреждение", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-
-                // Если SHChangeNotify не достаточно (для меню "Создать" часто нужен полный рестарт), завершаем shell
-                var processes = Process.GetProcessesByName("explorer");
-                var tasks = new List<Task>();
-
-                foreach (var process in processes)
-                {
-                    // Проверяем, является ли процесс shell (Desktop)
-                    if (IsShellProcess(process))
-                    {
-                        tasks.Add(Task.Run(() =>
-                        {
-                            process.Kill();
-                            process.WaitForExit();
-                        }));
-                    }
-                }
-
-                await Task.WhenAll(tasks);
-
-                // Запускаем explorer без UI
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden // Пытаемся минимизировать UI
-                };
-                Process.Start(processInfo);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Произошла ошибка при перезапуске проводника: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        /// <summary>
-        /// Проверяет, является ли процесс shell (Desktop).
-        /// </summary>
-        private static bool IsShellProcess(Process process)
-        {
-            try
-            {
-                return !string.IsNullOrEmpty(process.MainWindowTitle) && process.MainWindowHandle != IntPtr.Zero;
-            }
-            catch
-            {
-                return false; // Если не можем проверить, считаем не shell
-            }
-        }
-
-        /// <summary>
-        /// Проверяет, запущено ли приложение с правами администратора.
-        /// </summary>
-        private static bool IsRunningAsAdmin()
-        {
-            using var identity = WindowsIdentity.GetCurrent();
-            var principal = new WindowsPrincipal(identity);
-            return principal.IsInRole(WindowsBuiltInRole.Administrator);
-        }
-
-        /// <summary>
-        /// Запускает новый процесс с запросом прав администратора для добавления в реестр.
-        /// Возвращает процесс для ожидания завершения.
-        /// </summary>
-        private static Process? RunElevatedProcess(string title, string format)
-        {
-            try
-            {
-                var exePath = Process.GetCurrentProcess().MainModule?.FileName;
-                if (string.IsNullOrEmpty(exePath))
-                    throw new InvalidOperationException("Не удалось определить путь к исполняемому файлу.");
-
-                var args = $"--add \"{title.Replace("\"", "\\\"")}\" \"{format.Replace("\"", "\\\"")}\"";
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = exePath,
-                    Arguments = args,
-                    Verb = "runas",
-                    UseShellExecute = true
-                };
-
-                return Process.Start(processInfo);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка при запуске процесса с правами администратора: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Обрабатывает аргументы командной строки, если приложение запущено для изменения реестра.
-        /// </summary>
-        private static void HandleCommandLineArgs()
-        {
-            var args = Environment.GetCommandLineArgs();
-            if (args.Length >= 3)
-            {
-                try
-                {
-                    if (args[1] == "--add")
-                    {
-                        string title = args[2];
-                        string format = args[3];
-                        ContextMenuCreator.AddToNewMenu(title, format);
-                        Environment.Exit(0);
-                    }
-                    else if (args[1] == "--remove")
-                    {
-                        string title = args[2];
-                        string format = args[3];
-                        ContextMenuCreator.RemoveFromNewMenu(title, format);
-                        Environment.Exit(0);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Ошибка при выполнении команды: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                    Environment.Exit(1);
-                }
-            }
-        }
-
-        // WinAPI для SHChangeNotify
-        [DllImport("shell32.dll", CharSet = CharSet.Auto)]
-        private static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
     }
 }

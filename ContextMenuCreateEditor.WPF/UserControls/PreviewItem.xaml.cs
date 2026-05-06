@@ -1,127 +1,65 @@
-﻿using System;
-using System.Diagnostics;
-using System.Security.Principal;
-using System.Threading.Tasks;
+using ContextMenuCreateEditor.WPF.ViewModels;
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
 
 namespace ContextMenuCreateEditor.WPF.UserControls
 {
     public partial class PreviewItem : UserControl
     {
-        public event EventHandler? ItemDeleted; // Событие для уведомления родителя
+        public static readonly RoutedEvent EditRequestedEvent = EventManager.RegisterRoutedEvent(
+            nameof(EditRequested), RoutingStrategy.Bubble, typeof(RoutedEventHandler), typeof(PreviewItem));
+        public static readonly RoutedEvent DeleteRequestedEvent = EventManager.RegisterRoutedEvent(
+            nameof(DeleteRequested), RoutingStrategy.Bubble, typeof(RoutedEventHandler), typeof(PreviewItem));
 
-        private readonly string title;
-        private readonly string format;
+        public event RoutedEventHandler EditRequested
+        {
+            add => AddHandler(EditRequestedEvent, value);
+            remove => RemoveHandler(EditRequestedEvent, value);
+        }
 
-        public PreviewItem(string _title, string _format)
+        public event RoutedEventHandler DeleteRequested
+        {
+            add => AddHandler(DeleteRequestedEvent, value);
+            remove => RemoveHandler(DeleteRequestedEvent, value);
+        }
+
+        public PreviewItem()
         {
             InitializeComponent();
-            Loaded += PreviewItem_Loaded;
-            title = _title ?? throw new ArgumentNullException(nameof(_title));
-            format = _format ?? throw new ArgumentNullException(nameof(_format));
         }
 
-        private void PreviewItem_Loaded(object sender, RoutedEventArgs e)
-        {
-            IconItem.Source = FileIconHelper.GetFileIcon(format);
-            TitleTextBlock.Text = title;
-            FormatTextBlock.Text = format;
-        }
+        private bool IsOwn => DataContext is ShellNewItemViewModel vm && vm.IsOwn;
 
-        private async void DeleteButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (IsRunningAsAdmin())
-                {
-                    // Права есть, удаляем напрямую
-                    ContextMenuCreator.RemoveFromNewMenu(title, format);
-                    ItemDeleted?.Invoke(this, EventArgs.Empty);
-                    MainWindow.Instance.Update(); // Обновляем список в родительском окне
-                }
-                else
-                {
-                    // Запускаем elevated процесс
-                    var process = RunElevatedProcessForDelete(title, format);
-                    if (process != null)
-                    {
-                        await process.WaitForExitAsync();
-                        if (process.ExitCode == 0)
-                        {
-                            ItemDeleted?.Invoke(this, EventArgs.Empty);
-                            MainWindow.Instance.Update();
-                        }
-                        else
-                        {
-                            MessageBox.Show("Удаление элемента в elevated процессе завершилось с ошибкой.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка при удалении элемента: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
+        private void EditBtn_Click(object sender, RoutedEventArgs e)
+            => RaiseEvent(new RoutedEventArgs(EditRequestedEvent, this));
+
+        private void DeleteBtn_Click(object sender, RoutedEventArgs e)
+            => RaiseEvent(new RoutedEventArgs(DeleteRequestedEvent, this));
 
         private void MainBorder_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
         {
-            DeleteButton.Visibility = Visibility.Visible;
-            var fadeIn = new DoubleAnimation
+            if (!IsOwn) return;
+            ActionsPanel.Visibility = Visibility.Visible;
+            ActionsPanel.BeginAnimation(OpacityProperty, new DoubleAnimation
             {
-                From = 0,
+                From = ActionsPanel.Opacity,
                 To = 1,
-                Duration = TimeSpan.FromSeconds(0.2)
-            };
-            DeleteButton.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+                Duration = TimeSpan.FromSeconds(0.15)
+            });
         }
 
         private void MainBorder_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
         {
-            var fadeOut = new DoubleAnimation
+            var anim = new DoubleAnimation
             {
-                From = 1,
+                From = ActionsPanel.Opacity,
                 To = 0,
-                Duration = TimeSpan.FromSeconds(0.2)
+                Duration = TimeSpan.FromSeconds(0.15)
             };
-            fadeOut.Completed += (s, _) => DeleteButton.Visibility = Visibility.Collapsed; // Исправлено: подписка на событие
-            DeleteButton.BeginAnimation(UIElement.OpacityProperty, fadeOut);
-        }
-
-        private static bool IsRunningAsAdmin()
-        {
-            using var identity = WindowsIdentity.GetCurrent();
-            var principal = new WindowsPrincipal(identity);
-            return principal.IsInRole(WindowsBuiltInRole.Administrator);
-        }
-
-        private static Process? RunElevatedProcessForDelete(string title, string format)
-        {
-            try
-            {
-                var exePath = Process.GetCurrentProcess().MainModule?.FileName;
-                if (string.IsNullOrEmpty(exePath))
-                    throw new InvalidOperationException("Не удалось определить путь к исполняемому файлу.");
-
-                var args = $"--remove \"{title.Replace("\"", "\\\"")}\" \"{format.Replace("\"", "\\\"")}\"";
-                var processInfo = new ProcessStartInfo
-                {
-                    FileName = exePath,
-                    Arguments = args,
-                    Verb = "runas",
-                    UseShellExecute = true
-                };
-
-                return Process.Start(processInfo);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Ошибка при запуске процесса с правами администратора: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                return null;
-            }
+            anim.Completed += (_, _) => { if (ActionsPanel.Opacity == 0) ActionsPanel.Visibility = Visibility.Collapsed; };
+            ActionsPanel.BeginAnimation(OpacityProperty, anim);
         }
     }
 }

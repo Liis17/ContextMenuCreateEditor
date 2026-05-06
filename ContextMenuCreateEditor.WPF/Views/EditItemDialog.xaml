@@ -1,0 +1,96 @@
+<ui:FluentWindow
+    x:Class="ContextMenuCreateEditor.WPF.Views.EditItemDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Title="{Binding Title}"
+    Width="640"
+    Height="560"
+    ExtendsContentIntoTitleBar="True"
+    ResizeMode="CanResizeWithGrip"
+    ShowInTaskbar="False"
+    WindowBackdropType="Mica"
+    WindowStartupLocation="CenterOwner"
+    mc:Ignorable="d">
+    <Grid Margin="0,0,0,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="{Binding Title}" />
+
+        <StackPanel Grid.Row="1" Margin="16,8,16,0">
+            <TextBlock Margin="0,0,0,4" Text="Имя в меню «Создать»" />
+            <ui:TextBox
+                x:Name="DisplayNameBox"
+                Margin="0,0,0,12"
+                PlaceholderText="Например: Markdown файл"
+                Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" />
+
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="160" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Margin="0,0,0,4" Text="Имя создаваемого файла" />
+                    <ui:TextBox
+                        PlaceholderText="Например: New Document"
+                        Text="{Binding FileName, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Margin="0,0,0,4" Text="Расширение (можно пусто)" />
+                    <ui:TextBox
+                        PlaceholderText=".md"
+                        Text="{Binding Extension, UpdateSourceTrigger=PropertyChanged}"
+                        ToolTip="Если оставить пустым (для файлов типа Dockerfile), расширение будет выведено из имени файла. Файл создастся как «Имя.имя» — переименуйте вручную после создания." />
+                </StackPanel>
+            </Grid>
+
+            <TextBlock Margin="0,0,0,4" Text="Шаблон содержимого (можно оставить пустым)" />
+        </StackPanel>
+
+        <ui:TextBox
+            Grid.Row="2"
+            Margin="16,0,16,0"
+            AcceptsReturn="True"
+            AcceptsTab="True"
+            FontFamily="Cascadia Mono, Consolas, Courier New"
+            FontSize="13"
+            HorizontalScrollBarVisibility="Auto"
+            PlaceholderText="# Заголовок&#10;&#10;Любой текст…"
+            Text="{Binding Template, UpdateSourceTrigger=PropertyChanged}"
+            TextWrapping="NoWrap"
+            VerticalScrollBarVisibility="Auto" />
+
+        <TextBlock
+            Grid.Row="3"
+            Margin="16,8,16,0"
+            Foreground="#FFB86A"
+            Text="{Binding ValidationError}" />
+
+        <Grid Grid.Row="4" Margin="16,12,16,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ui:Button
+                Grid.Column="1"
+                Margin="0,0,8,0"
+                Click="Ok_Click"
+                Appearance="Primary"
+                Content="OK" />
+            <ui:Button
+                Grid.Column="2"
+                Click="Cancel_Click"
+                Content="Отмена" />
+        </Grid>
+    </Grid>
+</ui:FluentWindow>
